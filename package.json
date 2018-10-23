@@ -1,0 +1,21 @@
+{
+  "name": "fqrnativec",
+  "version": "1.0.0",
+  "description": "fqr Native C lib",
+  "main": "index.js",
+  "scripts": {
+    "install": "node-gyp rebuild -target=1.6.11 -arch=x64 -dist-url=https://atom.io/download/atom-shell",
+    "compile": "node-gyp rebuild -target=1.6.11 -arch=x64 -dist-url=https://atom.io/download/atom-shell"
+  },
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:cmajor-cd/fqrnativec.git"
+  },
+  "keywords": [
+    "FQR"
+  ],
+  "author": "YangYutong",
+  "license": "ISC",
+  "gypfile": true
+}
