@@ -29,8 +29,8 @@ $ cd /path-to-module/
 $ HOME=~/.electron-gyp node-gyp rebuild --target=0.29.1 --arch=x64 --dist-url=https://atom.io/download/atom-shell
 The HOME=~/.electron-gyp changes where to find development headers. The --target=0.29.1 is version of Electron. The --dist-url=... specifies where to download the headers. The --arch=x64 says the module is built for 64bit system.
 */
-/**
- * How to import the source C/C++
+/** -----------------
+ * How to create a npm module of source C/C++ by manually.
    1. create your npm module/create dir with c source code
    2. create binding.gyp
    {
@@ -70,6 +70,14 @@ The HOME=~/.electron-gyp changes where to find development headers. The --target
         }
     9. build to get exe
 */
+/** How to modify and debug by npm install mode ---------------------
+ * 1. import from: npm install fqrnativec
+ * 2. modify the files in ./node_moduls/fqrnativec/src/xxxx.c
+ * 3. delete the directory ./node_moduls/fqrnativec/build
+ * 4. compile it by: .\node_modules\.bin\electron-rebuild.cmd
+ * 5. merge changed code into master branch of fqrnativec, then update npm
+*/
+
 #include <node.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -189,7 +197,7 @@ void checkTheDat(element_struc *p_input){
 
 }
 
-/**
+/** ------------------
  * read the data file by line number.
 */
 void readFileDataByLine(const FunctionCallbackInfo<Value>& args) {
@@ -296,6 +304,120 @@ void readFileDataByLine(const FunctionCallbackInfo<Value>& args) {
 
   args.GetReturnValue().Set(rcObj);
 }
+/**-------------
+ * get size of the whole file
+*/
+int get_file_size(FILE * file_handle)
+{
+  //get and save the currect fseek.
+  unsigned int current_read_position=ftell( file_handle );
+  int file_size;
+  fseek( file_handle,0,SEEK_END );
+  //get the file's size
+  file_size=ftell( file_handle );
+  //restore the fseek.
+  fseek( file_handle,current_read_position,SEEK_SET );
+
+  return file_size;
+}
+/** --------------------
+ * read the outlook tracking data file by step.
+ * void readFileLocationOutlookDataByStep(string filePath, int maxDatLines, int step)
+ * @input: 
+ *   filePath: full path of the file.
+ *   maxDatLines: max data lines, if maxDatLines > maxDatFileLines => use maxDatFileLines, or use maxDatLines
+ *   step: step of lines, when read the data.
+ * @output:data array
+*/
+void readFileLocationOutlookDataByStep(const FunctionCallbackInfo<Value>& args) {
+  Isolate* isolate = args.GetIsolate();
+  // create rc object
+  Local<Object> rcObj = Object::New(isolate);
+  Local<Array>  rcArray = Array::New(isolate);
+  Local<Number> rcSucc = Uint32::New(isolate, 0); // 0: succ
+  Local<Number> rcFail = Uint32::New(isolate, 1); // 1: fail
+  // init rc => succ
+  rcObj->Set(String::NewFromUtf8(isolate, "rc"), rcSucc);
+
+  // Check the number of arguments passed.
+  if (args.Length() != 3) {
+    // Throw an Error that is passed back to JavaScript
+    // isolate->ThrowException(Exception::TypeError(
+    //     String::NewFromUtf8(isolate, "Wrong number of arguments")));
+    rcObj->Set(String::NewFromUtf8(isolate, "rc"), rcFail);
+    rcObj->Set(String::NewFromUtf8(isolate, "error"), String::NewFromUtf8(isolate, "Wrong number of arguments"));
+    return;
+  }
+
+  // Check the argument types
+  if (!args[0]->IsString() || !args[1]->IsNumber() || !args[2]->IsNumber()) {
+    rcObj->Set(String::NewFromUtf8(isolate, "rc"), rcFail);
+    rcObj->Set(String::NewFromUtf8(isolate, "error"), String::NewFromUtf8(isolate, "Wrong type of arguments"));
+    return;
+  }
+  v8::String::Utf8Value str(args[0]->ToString());
+  const char *c_fullpath = *str;
+	int maxDatLines = args[1]->NumberValue();
+  int step = args[2]->NumberValue();
+
+  //-- process file 
+    element_struc line_dat;
+    int e_size = 0, f_offset = 0, r_len = 0;
+    FILE *fp_r = 0;
+    fp_r = fopen(c_fullpath, "rb");
+    if( 0 != fp_r){
+      // rewind(fp_r);
+      e_size = sizeof(element_struc);
+      memset(&line_dat, 0, e_size);
+
+      int max_lines = (int) get_file_size(fp_r)/e_size;
+      if(maxDatLines < max_lines){
+        max_lines = maxDatLines;
+      }
+      // read data, by line by step.
+      int idx = 0;
+      for(int line = 1; line < max_lines; line = line + step, idx++){
+        f_offset = line * e_size;
+        int seeked = fseek(fp_r, f_offset, SEEK_SET);
+        if( 0 == seeked ){
+          r_len = fread(&line_dat, e_size, 1, fp_r);
+          if( 1 == r_len){
+            // check the set the data
+            checkTheDat(&line_dat);
+            // v8::TryCatch try_catch; // try{}
+            Local<Array> lineArray = Array::New(isolate);
+            char str_a[20]; 
+            sprintf(str_a, "%.7f", line_dat.longitude);
+            lineArray->Set(0, String::NewFromUtf8(isolate, str_a));
+            sprintf(str_a, "%.7f", line_dat.latitude);
+            lineArray->Set(1, String::NewFromUtf8(isolate, str_a));
+            // create rcArray
+            rcArray->Set(idx, lineArray);
+          }
+          else{
+            rcObj->Set(String::NewFromUtf8(isolate, "rc"), rcFail);
+            rcObj->Set(String::NewFromUtf8(isolate, "error"), String::NewFromUtf8(isolate, "Fail to fread file!"));
+            break;
+          }
+        }
+        else{
+          rcObj->Set(String::NewFromUtf8(isolate, "rc"), rcFail);
+          rcObj->Set(String::NewFromUtf8(isolate, "error"), String::NewFromUtf8(isolate, "Fail to fseek file!"));
+          break;
+        }
+      } // read data, for(){}
+      // fill the 'location': rcArray
+      rcObj->Set(String::NewFromUtf8(isolate, "location"), rcArray);
+    } // open file {}
+    else{
+      rcObj->Set(String::NewFromUtf8(isolate, "rc"), rcFail);
+      rcObj->Set(String::NewFromUtf8(isolate, "error"), String::NewFromUtf8(isolate, "Fail to open file!"));
+    }
+  fclose(fp_r);
+
+  args.GetReturnValue().Set(rcObj);
+}
+
 // void closeFile(const FunctionCallbackInfo<Value>& args) {
 //     if(0 != fp_r){
 //       fclose(fp_r);
@@ -304,6 +426,7 @@ void readFileDataByLine(const FunctionCallbackInfo<Value>& args) {
 //
 void Init(Local<Object> exports) {
   NODE_SET_METHOD(exports, "readFileDataByLine", readFileDataByLine);
+  NODE_SET_METHOD(exports, "readFileLocationOutlookDataByStep", readFileLocationOutlookDataByStep);
   // NODE_SET_METHOD(exports, "closeFile", closeFile);
 }
 

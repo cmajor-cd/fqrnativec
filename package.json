@@ -1,6 +1,6 @@
 {
   "name": "fqrnativec",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "fqr Native C lib",
   "main": "index.js",
   "scripts": {
@@ -15,7 +15,7 @@
   "keywords": [
     "FQR"
   ],
-  "author": "YangYutong",
+  "author": "yangyutong",
   "license": "ISC",
   "gypfile": true
 }
